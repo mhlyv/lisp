@@ -58,55 +58,38 @@ enum Value {
     List(List),
     Nil,
     Procedure(Procedure),
-    Symbol(String),
+    Symbol(Symbol),
 }
 
-macro_rules! symbol {
-    ($e:expr) => {
-        ValueRef::new(Value::Symbol($e.into()))
+macro_rules! value_from {
+    ($i:ident, $t:ty) => {
+        impl From<$t> for Value {
+            fn from(value: $t) -> Self {
+                Self::$i(value.into())
+            }
+        }
     };
 }
 
-macro_rules! bool {
-    ($e:expr) => {
-        ValueRef::new(Value::Bool($e))
-    };
-}
+value_from!(Bool, Bool);
+value_from!(Float, Float);
+value_from!(Integer, Integer);
+value_from!(Lambda, Lambda);
+value_from!(List, List);
+value_from!(Procedure, Procedure);
+value_from!(Symbol, Symbol);
+value_from!(Symbol, &str);
 
-macro_rules! integer {
-    ($e:expr) => {
-        ValueRef::new(Value::Integer($e))
-    };
-}
-
-macro_rules! float {
-    ($e:expr) => {
-        ValueRef::new(Value::Float($e))
-    };
-}
-
-macro_rules! lambda {
-    ($e:expr) => {
-        ValueRef::new(Value::Lambda($e))
-    };
-}
-
-macro_rules! list {
-    ($($e:tt)*) => {
-        ValueRef::new(Value::List(vec![$($e)*]))
-    };
-}
-
-macro_rules! nil {
+macro_rules! value {
     () => {
         ValueRef::new(Value::Nil)
     };
-}
-
-macro_rules! procedure {
     ($e:expr) => {
-        ValueRef::new(Value::Procedure($e))
+        ValueRef::new(Value::from($e))
     };
+    ($($e:expr),+ $(,)?) => {
+        ValueRef::new(Value::from(vec![$($e),+]))
+    }
 }
 
 #[derive(Debug)]
@@ -119,6 +102,18 @@ enum Error {
     IncompatibleTypes(&'static str, ValueRef, ValueRef),
     InvalidSyntax(Value),
     Undefined(Symbol),
+}
+
+macro_rules! arithmetic {
+    ($name:tt, $op:tt, $repr:expr) => {
+        fn $name(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
+            Ok(match (&*a, &*b) {
+                (Value::Integer(a), Value::Integer(b)) => value!(a $op b),
+                (Value::Float(a), Value::Float(b)) => value!(a $op b),
+                _ => return Err(Error::IncompatibleTypes($repr, a, b)),
+            })
+        }
+    };
 }
 
 impl Value {
@@ -144,7 +139,7 @@ impl Value {
     }
 
     fn eq(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        Ok(bool!(match (&*a, &*b) {
+        Ok(value!(match (&*a, &*b) {
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Integer(a), Value::Integer(b)) => a == b,
@@ -157,74 +152,19 @@ impl Value {
         }))
     }
 
-    fn gt(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        match (&*a, &*b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(bool!(a > b)),
-            (Value::Float(a), Value::Float(b)) => Ok(bool!(a > b)),
-            _ => Err(Error::IncompatibleTypes(">", a, b)),
-        }
-    }
-
-    fn gte(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        match (&*a, &*b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(bool!(a >= b)),
-            (Value::Float(a), Value::Float(b)) => Ok(bool!(a >= b)),
-            _ => Err(Error::IncompatibleTypes(">=", a, b)),
-        }
-    }
-
-    fn lt(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        match (&*a, &*b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(bool!(a < b)),
-            (Value::Float(a), Value::Float(b)) => Ok(bool!(a < b)),
-            _ => Err(Error::IncompatibleTypes("<", a, b)),
-        }
-    }
-
-    fn lte(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        match (&*a, &*b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(bool!(a <= b)),
-            (Value::Float(a), Value::Float(b)) => Ok(bool!(a <= b)),
-            _ => Err(Error::IncompatibleTypes("<=", a, b)),
-        }
-    }
-
-    fn add(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        match (&*a, &*b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(integer!(a + b)),
-            (Value::Float(a), Value::Float(b)) => Ok(float!(a + b)),
-            _ => Err(Error::IncompatibleTypes("+", a, b)),
-        }
-    }
-
-    fn sub(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        match (&*a, &*b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(integer!(a - b)),
-            (Value::Float(a), Value::Float(b)) => Ok(float!(a - b)),
-            _ => Err(Error::IncompatibleTypes("-", a, b)),
-        }
-    }
-
-    fn mul(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        match (&*a, &*b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(integer!(a * b)),
-            (Value::Float(a), Value::Float(b)) => Ok(float!(a * b)),
-            _ => Err(Error::IncompatibleTypes("*", a, b)),
-        }
-    }
-
-    fn div(a: ValueRef, b: ValueRef) -> Result<ValueRef, Error> {
-        match (&*a, &*b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(integer!(a / b)),
-            (Value::Float(a), Value::Float(b)) => Ok(float!(a / b)),
-            _ => Err(Error::IncompatibleTypes("/", a, b)),
-        }
-    }
+    arithmetic!(gt, >, ">");
+    arithmetic!(gte, >=, ">=");
+    arithmetic!(lt, <, "<");
+    arithmetic!(lte, <=, "<=");
+    arithmetic!(add, +, "+");
+    arithmetic!(sub, -, "-");
+    arithmetic!(mul, *, "*");
+    arithmetic!(div, /, "/");
 }
 
 macro_rules! get_reducer {
-    ($f:path) => {
-        procedure!(|list| {
+    ($f:path) => {{
+        let f: Procedure = |list| {
             if list.len() == 0 {
                 Err(Error::ExpectedAtLeastNArguments(1))
             } else {
@@ -232,25 +172,27 @@ macro_rules! get_reducer {
                     .skip(1)
                     .try_fold(list[0].clone(), |a, b| $f(a, b.clone()))
             }
-        })
-    };
+        };
+        value!(f)
+    }};
 }
 
 macro_rules! get_compare_adjecent {
-    ($f:path) => {
-        procedure!(|list| {
+    ($f:path) => {{
+        let f: Procedure = |list| {
             if list.len() == 0 {
                 Err(Error::ExpectedAtLeastNArguments(1))
             } else {
                 for s in list.as_slice().windows(2) {
                     if !$f(s[0].clone(), s[1].clone())?.bool()? {
-                        return Ok(bool!(false));
+                        return Ok(value!(false));
                     }
                 }
-                Ok(bool!(true))
+                Ok(value!(true))
             }
-        })
-    };
+        };
+        value!(f)
+    }};
 }
 
 impl Display for Value {
@@ -316,12 +258,8 @@ impl PartialEq for Env {
 
 impl Env {
     fn collect(&mut self) {
-        // println!("unfiltered {}", self.children.len());
-
         self.children
             .retain(|child| Rc::strong_count(child) == 1 && Rc::weak_count(child) == 0);
-
-        // println!("filtered {}", self.children.len());
     }
 
     fn new(map: HashMap<Symbol, ValueRef>, parent: Weak<RefCell<Env>>) -> EnvRef {
@@ -370,12 +308,12 @@ fn handle_define(list: &List, env: EnvRef) -> Result<ValueRef, Error> {
         .borrow_mut()
         .insert(key, eval(list[2].clone(), env.clone())?);
 
-    Ok(nil!())
+    Ok(value!())
 }
 
 fn handle_begin(list: &List, env: EnvRef) -> Result<ValueRef, Error> {
     if list.len() == 1 {
-        return Ok(nil!());
+        return Ok(value!());
     }
 
     for e in list[1..list.len() - 1].iter() {
@@ -400,7 +338,7 @@ fn handle_lambda(list: &List, env: EnvRef) -> Result<ValueRef, Error> {
     let body = list[2].clone();
     let env = Rc::downgrade(&env);
 
-    Ok(lambda!(Lambda::new(parameters, body, env)))
+    Ok(value!(Lambda::new(parameters, body, env)))
 }
 
 fn handle_if(list: &List, env: EnvRef) -> Result<ValueRef, Error> {
@@ -450,33 +388,33 @@ fn eval(expr: ValueRef, env: EnvRef) -> Result<ValueRef, Error> {
 fn main() {
     let env = EnvRef::default();
 
-    let v = list![
-        symbol!("begin"),
-        list![
-            symbol!("define"),
-            symbol!("fib"),
-            list![
-                symbol!("lambda"),
-                list![symbol!("n")],
-                list![
-                    symbol!("if"),
-                    list![symbol!(">"), integer!(2), symbol!("n")],
-                    symbol!("n"),
-                    list![
-                        symbol!("+"),
-                        list![
-                            symbol!("fib"),
-                            list![symbol!("-"), symbol!("n"), integer!(1)],
+    let v = value![
+        value!("begin"),
+        value![
+            value!("define"),
+            value!("fib"),
+            value![
+                value!("lambda"),
+                value![value!("n"),],
+                value![
+                    value!("if"),
+                    value![value!(">"), value!(2), value!("n")],
+                    value!("n"),
+                    value![
+                        value!("+"),
+                        value![
+                            value!("fib"),
+                            value![value!("-"), value!("n"), value!(1)],
                         ],
-                        list![
-                            symbol!("fib"),
-                            list![symbol!("-"), symbol!("n"), integer!(2)],
+                        value![
+                            value!("fib"),
+                            value![value!("-"), value!("n"), value!(2)],
                         ],
                     ],
                 ],
             ],
         ],
-        list![symbol!("fib"), integer!(10)],
+        value![value!("fib"), value!(10)],
     ];
 
     println!("{}", v);
