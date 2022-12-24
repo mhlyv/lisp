@@ -1,7 +1,7 @@
-use std::fmt::Display;
 use crate::error::Error;
-use std::rc::Rc;
 use crate::lambda::Lambda;
+use std::fmt::Display;
+use std::rc::Rc;
 
 pub type Bool = bool;
 pub type Float = f64;
@@ -38,6 +38,7 @@ value_from!(Float, Float);
 value_from!(Integer, Integer);
 value_from!(Lambda, Lambda);
 value_from!(List, List);
+value_from!(List, &[ValueRef]);
 value_from!(Procedure, Procedure);
 value_from!(Symbol, Symbol);
 value_from!(Symbol, &str);
@@ -67,6 +68,14 @@ macro_rules! arithmetic {
                 (Value::Float(a), Value::Float(b)) => value!(a $op b),
                 _ => return Err(Error::IncompatibleTypes($repr, a, b)),
             })
+        }
+    };
+}
+
+macro_rules! expect_n_args {
+    ($args:expr, $n:expr) => {
+        if $args.len() != $n {
+            return Err(Error::ExpectedNArguments($n));
         }
     };
 }
@@ -115,6 +124,34 @@ impl Value {
     arithmetic!(sub, -, "-");
     arithmetic!(mul, *, "*");
     arithmetic!(div, /, "/");
+
+    pub fn car(args: List) -> Result<ValueRef, Error> {
+        expect_n_args!(args, 1);
+        args[0].list()?.first().ok_or(Error::Empty).cloned()
+    }
+
+    pub fn cdr(args: List) -> Result<ValueRef, Error> {
+        expect_n_args!(args, 1);
+
+        Ok(value!(&args[0].list()?[1..]))
+    }
+
+    pub fn cons(args: List) -> Result<ValueRef, Error> {
+        expect_n_args!(args, 2);
+
+        let a = args[0].clone();
+        let b = args[1].clone();
+
+        Ok(match &*b {
+            Value::Nil => value!(a,),
+            Value::List(list) => {
+                let mut list = list.clone();
+                list.insert(0, a);
+                value!(list)
+            }
+            _ => return Err(Error::ExpectedList((*b).clone())),
+        })
+    }
 }
 
 impl Display for Value {

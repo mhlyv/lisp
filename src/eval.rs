@@ -1,8 +1,8 @@
-use std::rc::Rc;
-use crate::value::{Value, ValueRef, List, value};
-use crate::lambda::Lambda;
 use crate::env::EnvRef;
 use crate::error::Error;
+use crate::lambda::Lambda;
+use crate::value::{value, List, Value, ValueRef};
+use std::rc::Rc;
 
 fn handle_define(list: &List, env: EnvRef) -> Result<ValueRef, Error> {
     if list.len() != 3 {
@@ -60,6 +60,14 @@ fn handle_if(list: &List, env: EnvRef) -> Result<ValueRef, Error> {
     }
 }
 
+fn handle_quote(list: &List) -> Result<ValueRef, Error> {
+    if list.len() != 2 {
+        return Err(Error::InvalidSyntax(Value::List(list.clone())));
+    }
+
+    Ok(list[1].clone())
+}
+
 pub fn eval(expr: ValueRef, env: EnvRef) -> Result<ValueRef, Error> {
     match &*expr {
         Value::Symbol(s) => (*env).borrow().get(s),
@@ -70,6 +78,7 @@ pub fn eval(expr: ValueRef, env: EnvRef) -> Result<ValueRef, Error> {
                     "begin" => return handle_begin(list, env),
                     "lambda" => return handle_lambda(list, env),
                     "if" => return handle_if(list, env),
+                    "quote" => return handle_quote(list),
                     _ => {}
                 }
             }
@@ -91,4 +100,3 @@ pub fn eval(expr: ValueRef, env: EnvRef) -> Result<ValueRef, Error> {
         _ => Ok(expr),
     }
 }
-

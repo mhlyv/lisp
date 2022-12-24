@@ -1,7 +1,7 @@
-use crate::error::Error;
-use crate::value::{Symbol, ValueRef, List};
-use crate::eval::eval;
 use crate::env::{Env, WeakEnvRef};
+use crate::error::Error;
+use crate::eval::eval;
+use crate::value::{List, Symbol, ValueRef};
 
 #[derive(Clone, Debug)]
 pub struct Lambda {

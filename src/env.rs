@@ -1,8 +1,8 @@
+use crate::error::Error;
+use crate::value::{value, Procedure, Symbol, Value, ValueRef};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
-use std::cell::RefCell;
-use crate::value::{ValueRef, Symbol, Procedure, Value, value};
-use crate::error::Error;
 
 pub type EnvRef = Rc<RefCell<Env>>;
 pub type WeakEnvRef = Weak<RefCell<Env>>;
@@ -60,6 +60,9 @@ impl Default for Env {
                 (">=".into(), get_compare_adjecent!(Value::gte)),
                 ("<".into(), get_compare_adjecent!(Value::lt)),
                 ("<=".into(), get_compare_adjecent!(Value::lte)),
+                ("cons".into(), value!(Value::cons as Procedure)),
+                ("car".into(), value!(Value::car as Procedure)),
+                ("cdr".into(), value!(Value::cdr as Procedure)),
             ]),
             parent: Default::default(),
             children: Default::default(),
