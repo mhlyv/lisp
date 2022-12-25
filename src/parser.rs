@@ -4,6 +4,7 @@ use crate::value::{value, Float, Integer, List, ValueRef};
 use regex::Regex;
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
+use std::iter::Peekable;
 
 #[derive(Debug)]
 pub enum Error {
@@ -15,21 +16,54 @@ pub enum Error {
 
 pub type ParseResult = Result<ValueRef, Error>;
 
-pub struct Parser {
-    tokens: VecDeque<String>,
+struct Tokenizer<R> {
+    regex: Regex,
+    reader: BufReader<R>,
+    buf: VecDeque<String>,
 }
 
-impl Parser {
-    pub fn new<R: Read>(source: R) -> Result<Self, Error> {
-        let regex = Regex::new(r"(\()|(\))|(;[^\n]*$)|(')|([^\s();']+)").unwrap();
-        let source = BufReader::new(source);
-        let mut tokens = VecDeque::new();
+impl<R: Read> Tokenizer<R> {
+    fn new(source: R) -> Self {
+        let regex = Regex::new(r"(\()|(\))|(')|([^\s()']+)").unwrap();
+        let reader = BufReader::new(source);
+        let buf = VecDeque::new();
 
-        for line in source.lines() {
-            let line = line.map_err(Error::Io)?;
-            tokens.extend(regex.find_iter(&line).map(|s| s.as_str().to_owned()))
+        Self { regex, reader, buf }
+    }
+
+    fn fetch(&mut self) -> Result<(), Error> {
+        while self.buf.is_empty() {
+            let mut line = String::new();
+            let len = self.reader.read_line(&mut line).map_err(Error::Io)?;
+            self.buf
+                .extend(self.regex.find_iter(&line).map(|s| s.as_str().to_owned()));
+            if len == 0 {
+                break;
+            }
         }
 
+        Ok(())
+    }
+}
+
+impl<R: Read> Iterator for Tokenizer<R> {
+    type Item = Result<String, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.fetch() {
+            Ok(()) => self.buf.pop_front().map_or_else(|| None, |s| Some(Ok(s))),
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+pub struct Parser<R: Read> {
+    tokens: Peekable<Tokenizer<R>>,
+}
+
+impl<R: Read> Parser<R> {
+    pub fn new(source: R) -> Result<Self, Error> {
+        let tokens = Tokenizer::new(source).peekable();
         Ok(Self { tokens })
     }
 
@@ -39,14 +73,22 @@ impl Parser {
             "(" => {
                 let mut list = List::new();
                 loop {
-                    match self.tokens.front().map(|s| s.as_str()) {
-                        Some(")") => {
-                            let _ = self.tokens.pop_front(); // drop
-                            break value!(list);
+                    let peek = self.tokens.peek();
+                    if let Some(res) = peek {
+                        if let Ok(s) = res {
+                            match s.as_str() {
+                                ")" => {
+                                    let _ = self.tokens.next(); // drop
+                                    break value!(list);
+                                }
+                                // if there is a token left next won't be None
+                                _ => list.push(self.next().unwrap()?),
+                            }
+                        } else {
+                            return Err(self.tokens.next().unwrap().unwrap_err());
                         }
-                        // if there is a token left next won't be None
-                        Some(_) => list.push(self.next().unwrap()?),
-                        None => return Err(Error::Unclosed(value!(list))),
+                    } else {
+                        return Err(Error::Unclosed(value!(list)));
                     }
                 }
             }
@@ -68,11 +110,14 @@ impl Parser {
     }
 }
 
-impl Iterator for Parser {
+impl<R: Read> Iterator for Parser<R> {
     type Item = ParseResult;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let front = self.tokens.pop_front()?;
-        Some(self.parse(front))
+        let front = self.tokens.next()?;
+        Some(match front {
+            Ok(s) => self.parse(s),
+            Err(e) => Err(e),
+        })
     }
 }
