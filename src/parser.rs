@@ -67,31 +67,35 @@ impl<R: Read> Parser<R> {
         Ok(Self { tokens })
     }
 
+    fn parse_list(&mut self) -> ParseResult {
+        let mut list = List::new();
+        loop {
+            if let Ok(s) = self
+                .tokens
+                .peek()
+                .ok_or_else(|| Error::Unclosed(value!(list.clone())))?
+            {
+                match s.as_str() {
+                    ")" => {
+                        // ignore closing paren
+                        let _ = self.tokens.next();
+
+                        break Ok(value!(list));
+                    }
+                    // if there is a token left next won't be None
+                    _ => list.push(self.next().unwrap()?),
+                }
+            } else {
+                // the next item of the iterator is an error so pop it from the queue
+                self.tokens.next().unwrap()?;
+            }
+        }
+    }
+
     fn parse(&mut self, token: String) -> ParseResult {
         Ok(match token.as_str() {
             "nil" => value!(),
-            "(" => {
-                let mut list = List::new();
-                loop {
-                    let peek = self.tokens.peek();
-                    if let Some(res) = peek {
-                        if let Ok(s) = res {
-                            match s.as_str() {
-                                ")" => {
-                                    let _ = self.tokens.next(); // drop
-                                    break value!(list);
-                                }
-                                // if there is a token left next won't be None
-                                _ => list.push(self.next().unwrap()?),
-                            }
-                        } else {
-                            return Err(self.tokens.next().unwrap().unwrap_err());
-                        }
-                    } else {
-                        return Err(Error::Unclosed(value!(list)));
-                    }
-                }
-            }
+            "(" => self.parse_list()?,
             ")" => return Err(Error::Unexpected(token)),
             "'" => value!(
                 value!("quote"),
